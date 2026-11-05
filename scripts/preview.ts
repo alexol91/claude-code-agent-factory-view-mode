@@ -5,8 +5,9 @@ import { join } from 'node:path'
 
 import type { AgentStatus, FactoryAgent } from '../types'
 import { sceneSvg } from '../hooks/paint'
-import { FRAMES, drawScene, layout, sceneHotspots, sceneLabels, seatsNeeded, type SceneAgent } from '../hooks/scene'
+import { FRAMES, bubbleBox, drawScene, layout, sceneHotspots, sceneLabels, seatsNeeded, type SceneAgent } from '../hooks/scene'
 import { defaultStyle } from '../hooks/model'
+import { actionText, bubbleLines } from '../hooks/activity'
 
 const out = process.argv[2] ?? '.'
 const count = Number(process.argv[3] ?? 8)
@@ -31,12 +32,14 @@ const agent = (id: string, seat: number, type: string, status: AgentStatus, tool
   type,
   label: seat === 0 ? 'Claude' : `${type.slice(0, 7)}-${seat}`,
   description: `demo task ${seat}`,
+  project: null,
   status,
   outcome,
   tool,
   detail: null,
   toolId: null,
   since: 0,
+  startedAt: 0,
   seat,
   toolCount: 0,
   isTeammate: false,
@@ -51,9 +54,15 @@ for (let i = 1; i <= count; i++) {
 const sceneAgents: SceneAgent[] = agents.map(a => ({ agent: a, style: defaultStyle(a, 'random') }))
 
 const lay = layout(seatsNeeded(sceneAgents), maxCols, { spacing: 'roomy' })
-const frames = Array.from({ length: FRAMES }, (_, f) => drawScene(lay, sceneAgents, f))
-const labels = sceneLabels(lay, sceneAgents, 10)
-const svg = sceneSvg(frames, labels, sceneHotspots(lay, sceneAgents, a => a.label), { scale: 3, secondsPerFrame: 0.25 })
+const frames = Array.from({ length: FRAMES }, (_, f) => drawScene(lay, sceneAgents, f, undefined, { textBubbles: true }))
+const labels = sceneLabels(lay, sceneAgents, 14)
+const bubbles = sceneAgents.flatMap(({ agent: a }) => {
+  if (a.status !== 'working') return []
+  const lines = bubbleLines(actionText(a.tool, 'TaskService.php'))
+  const box = bubbleBox(lay, a.seat, lines.length)
+  return box === undefined ? [] : [{ ...box, lines }]
+})
+const svg = sceneSvg(frames, labels, sceneHotspots(lay, sceneAgents, a => a.label), { scale: 3, secondsPerFrame: 0.25 }, { bubbles })
 writeFileSync(join(out, 'factory.svg'), svg)
 for (const f of [0, 1]) {
   const still = sceneSvg([frames[f]!], labels, [], { scale: 3, secondsPerFrame: 0.25 })

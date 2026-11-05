@@ -1,31 +1,18 @@
 {
-  "name": "factory-view",
-  "description": "Factory View, a Claude Code mod: a pixel-art office where Claude and its subagents work at their desks.",
+  "name": "oficina",
+  "description": "Oficina, un mod de Claude Code: una oficina pixel art donde Claude y sus subagentes trabajan en su mesa.",
   "owner": {
-    "name": "metetik",
-    "url": "https://github.com/metetik"
+    "name": "Alejandro Oñate",
+    "url": "https://github.com/alexol91"
   },
   "plugins": [
     {
-      "name": "factory-view",
+      "name": "oficina",
       "source": "./",
-      "displayName": "Factory View",
-      "description": "A pixel-art office for Claude Code: watch Claude and its subagents work at their desks, and dress them up.",
+      "displayName": "Oficina",
+      "description": "Una oficina pixel art donde Claude y sus subagentes trabajan en su mesa: avatares por proyecto, bocadillos de acción y el detalle de lo que hace cada uno.",
       "category": "visualization",
-      "tags": [
-        "subagents",
-        "multi-agent",
-        "agent-orchestration",
-        "visualization",
-        "pixel-art",
-        "terminal-ui",
-        "tui",
-        "dashboard",
-        "mod",
-        "mascot",
-        "agent-status",
-        "fun"
-      ]
+      "tags": ["subagents", "multi-agent", "agent-orchestration", "visualization", "pixel-art", "mod", "mascot", "agent-status"]
     }
   ]
 }

@@ -1,5 +1,5 @@
 import { hex } from './sprites'
-import type { Canvas, Hotspot, Label } from './scene'
+import { BUBBLE_FONT, BUBBLE_LINE_H, type BubbleBox, type Box, type Canvas, type Hotspot, type Label } from './scene'
 
 const UPPER_HALF = 0x2580
 const B64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
@@ -162,6 +162,112 @@ function escapeXml(text: string): string {
   return text.replace(/[<>&"']/g, ch => `&#${ch.charCodeAt(0)};`)
 }
 
+const round = (v: number) => Math.round(v * 1000) / 1000
+
+export type SvgBubble = BubbleBox & { lines: readonly string[] }
+export type SvgExtras = { bubbles?: readonly SvgBubble[]; avatars?: readonly SvgAvatar[]; badges?: readonly SvgBadge[] }
+
+const BUBBLE_FILL = '#f6f4f0'
+const BUBBLE_INK = '#22252b'
+
+/** Los bocadillos: un rectángulo redondeado, un pico hacia la cabeza y el texto centrado. */
+function bubblesSvg(bubbles: readonly SvgBubble[]): string {
+  if (bubbles.length === 0) return ''
+  const body = bubbles
+    .map(b => {
+      const base = round(b.y + b.height - 0.2)
+      const box = `<rect x="${round(b.x)}" y="${round(b.y)}" width="${round(b.width)}" height="${round(b.height)}" rx="1.6" fill="${BUBBLE_FILL}" stroke="${BUBBLE_INK}" stroke-width="0.35"/>`
+      const tail = `<path d="M${round(b.tailX - 1.4)} ${base}L${round(b.tailX)} ${round(b.tailY)}L${round(b.tailX + 1.4)} ${base}Z" fill="${BUBBLE_FILL}"/>`
+      const text = b.lines
+        .map((line, i) => `<text x="${round(b.x + b.width / 2)}" y="${round(b.y + 1 + BUBBLE_LINE_H / 2 + i * BUBBLE_LINE_H)}">${escapeXml(line)}</text>`)
+        .join('')
+      return box + tail + text
+    })
+    .join('')
+
+  return `<g font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-size="${BUBBLE_FONT}" font-weight="700" text-anchor="middle" dominant-baseline="middle" fill="${BUBBLE_INK}">${body}</g>`
+}
+
+export const SVG_LIMIT = 131072
+
+/**
+ * Ancho propio del SVG en escritorio y móvil: mayor que cualquier panel, para que
+ * la app lo encaje al ancho del panel (sin `width` en el elemento, el dibujo toma
+ * su propio ancho hasta el borde del hueco y el alto en proporción).
+ */
+export const FILL_WIDTH = 4000
+
+/** La escala que da al dibujo `FILL_WIDTH` píxeles de ancho propio. */
+export function fillScale(width: number): number {
+  return FILL_WIDTH / width
+}
+
+/**
+ * Cómo se colocan los PNG en el SVG: `use` (una copia por proyecto en <defs>) o
+ * `inline` (cada mesa lleva la suya). Lo decidió la prueba de la tarea 2.
+ */
+export const AVATAR_MODE: 'use' | 'inline' = 'use'
+
+export type SvgAvatar = Box & {
+  seat: number
+  /** Un id por proyecto: su raíz. */
+  key: string
+  /** Fotogramas en base64. */
+  frames: readonly string[]
+  imageWidth: number
+  imageHeight: number
+  fps: number
+}
+export type SvgBadge = { x: number; y: number; text: string; color: string }
+
+const pngImage = (a: SvgAvatar, data: string, attrs: string) =>
+  `<image${attrs} width="${a.imageWidth}" height="${a.imageHeight}" href="data:image/png;base64,${data}" style="image-rendering:pixelated"/>`
+
+/** Los avatares: escalados a su hueco, apoyados abajo y centrados; los animados alternan fotogramas con SMIL. */
+function avatarLayer(avatars: readonly SvgAvatar[]): { defs: string; body: string } {
+  const keys = new Map<string, number>()
+  let defs = ''
+  let body = ''
+  for (const a of avatars) {
+    if (!keys.has(a.key)) {
+      const fresh = keys.size
+      keys.set(a.key, fresh)
+      if (AVATAR_MODE === 'use') a.frames.forEach((data, f) => (defs += pngImage(a, data, ` id="av${fresh}f${f}"`)))
+    }
+    const k = keys.get(a.key)!
+    const scale = Math.min(a.width / a.imageWidth, a.height / a.imageHeight)
+    const x = round(a.x + (a.width - a.imageWidth * scale) / 2)
+    const y = round(a.y + a.height - a.imageHeight * scale)
+    const dur = (a.frames.length / a.fps).toFixed(2)
+    const shapes = a.frames.map((data, f) => {
+      const shape = AVATAR_MODE === 'use' ? `<use href="#av${k}f${f}"/>` : pngImage(a, data, '')
+      if (a.frames.length === 1) return shape
+      const values = a.frames.map((_, i) => (i === f ? 'visible' : 'hidden')).join(';')
+      return `<g visibility="${f === 0 ? 'visible' : 'hidden'}"><animate attributeName="visibility" values="${values}" dur="${dur}s" calcMode="discrete" repeatCount="indefinite"/>${shape}</g>`
+    })
+    body += `<g transform="translate(${x} ${y}) scale(${round(scale)})">${shapes.join('')}</g>`
+  }
+  return { defs: defs === '' ? '' : `<defs>${defs}</defs>`, body }
+}
+
+function badgeLayer(badges: readonly SvgBadge[]): string {
+  if (badges.length === 0) return ''
+  const body = badges
+    .map(b => `<text x="${round(b.x)}" y="${round(b.y)}" fill="${b.color}" stroke="${BUBBLE_INK}" stroke-width="0.4" paint-order="stroke">${escapeXml(b.text)}</text>`)
+    .join('')
+  return `<g font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-size="5" font-weight="700" text-anchor="middle" dominant-baseline="middle">${body}</g>`
+}
+
+/** El primer SVG que cabe: con todos los fotogramas de los avatares, con solo el primero, o sin avatares (spec 3.4). */
+export function fitAvatars(avatars: readonly SvgAvatar[], build: (avatars: readonly SvgAvatar[]) => string): string {
+  const attempts = [avatars, avatars.map(a => ({ ...a, frames: a.frames.slice(0, 1) })), []]
+  for (const attempt of attempts) {
+    const svg = build(attempt)
+    if (svg.length <= SVG_LIMIT) return svg
+  }
+  return build([])
+}
+
 /** The color most pixels have, painted once as the backdrop. */
 function commonest(canvas: Canvas): number {
   const counts = new Map<number, number>()
@@ -179,8 +285,6 @@ function commonest(canvas: Canvas): number {
   return best
 }
 
-export const SVG_LIMIT = 131072
-
 /**
  * The remote surfaces' picture: the first frame whole, and for each later
  * frame only the pixels that change, shown in turn by SMIL so it plays with
@@ -191,6 +295,7 @@ export function sceneSvg(
   labels: readonly Label[],
   hotspots: readonly Hotspot[],
   options: { scale: number; secondsPerFrame: number },
+  extras: SvgExtras = {},
 ): string {
   const first = frames[0]!
   const { width, height } = first
@@ -211,17 +316,21 @@ export function sceneSvg(
         `<rect x="${spot.x}" y="${spot.y}" width="${spot.width}" height="${spot.height}" fill="#000" fill-opacity="0" pointer-events="all"><title>${escapeXml(spot.title)}</title></rect>`,
     )
     .join('')
+  const avatar = avatarLayer(extras.avatars ?? [])
+  const top = avatar.body + badgeLayer(extras.badges ?? [])
   const head =
-    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="${width * options.scale}" height="${height * options.scale}">` +
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="${round(width * options.scale)}" height="${round(height * options.scale)}">` +
+    avatar.defs +
     `<rect width="${width}" height="${height}" fill="${hex(backdrop)}"/>` +
     `<g shape-rendering="crispEdges">${base}</g>`
   const tail =
     `<g font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-size="3.4" font-weight="700" text-anchor="middle" dominant-baseline="middle">${texts}</g>` +
+    bubblesSvg(extras.bubbles ?? []) +
     `${spots}</svg>`
 
   const build = (step: number) => {
     const shown = frames.filter((_, i) => i % step === 0)
-    if (shown.length < 2) return head + tail
+    if (shown.length < 2) return head + top + tail
     const dur = (frames.length * options.secondsPerFrame).toFixed(2)
     const overlays = shown.slice(1).map((frame, k) => {
       const diff = paths(width, height, (x, y) => {
@@ -233,7 +342,7 @@ export function sceneSvg(
       return `<g visibility="hidden" shape-rendering="crispEdges"><animate attributeName="visibility" values="${values}" dur="${dur}s" calcMode="discrete" repeatCount="indefinite"/>${diff}</g>`
     })
 
-    return head + overlays.join('') + tail
+    return head + overlays.join('') + top + tail
   }
 
   for (const step of [1, 2, 4, frames.length]) {
@@ -241,5 +350,5 @@ export function sceneSvg(
     if (svg.length <= SVG_LIMIT) return svg
   }
 
-  return head + tail
+  return head + top + tail
 }

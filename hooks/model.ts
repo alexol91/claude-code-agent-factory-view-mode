@@ -1,5 +1,7 @@
 import type { AccessoryName, AgentStatus, AgentStyle, ColorName, FactoryAgent, HatName, LooksMode } from '../types'
+import { actionText } from './activity'
 import { ACCESSORY_NAMES, COLOR_NAMES, HAT_NAMES } from './sprites'
+import { STATUS_ES, fold, idOf } from './texts'
 
 export const MAIN_ID = 'main'
 /** Desks beyond the manager's before finished agents are sent home. */
@@ -17,13 +19,15 @@ export function mainAgent(now: number): FactoryAgent {
     isMain: true,
     type: 'main',
     label: 'Claude',
-    description: 'The main conversation: hands out the work.',
+    description: 'La conversación principal: reparte el trabajo.',
+    project: null,
     status: 'waiting',
     outcome: null,
     tool: null,
     detail: null,
     toolId: null,
     since: now,
+    startedAt: now,
     seat: 0,
     toolCount: 0,
     isTeammate: false,
@@ -32,7 +36,8 @@ export function mainAgent(now: number): FactoryAgent {
 }
 
 export function withMain(agents: readonly FactoryAgent[], now: number): FactoryAgent[] {
-  return agents.some(a => a.id === MAIN_ID) ? [...agents] : [mainAgent(now), ...agents]
+  const all = agents.map(a => ({ ...a, project: a.project ?? null, startedAt: a.startedAt ?? a.since }))
+  return all.some(a => a.id === MAIN_ID) ? all : [mainAgent(now), ...all]
 }
 
 const isFinished = (a: FactoryAgent) => !a.isMain && (a.status === 'done' || a.status === 'failed' || a.status === 'sleeping')
@@ -226,20 +231,29 @@ export const STYLE_CHOICES: { color: ColorName[]; hat: HatName[]; accessory: Acc
 }
 
 /**
- * Reads `color=sky hat=crown extra=tie` (any order, `accessory` or `extra`)
- * into a style change, or the first word it does not know.
+ * Lee `color=cielo sombrero=corona extra=corbata` (en cualquier orden, con o sin
+ * tildes) como un cambio de aspecto, o devuelve la primera palabra que no entiende.
  */
 export function parseStyle(words: readonly string[]): { change: Partial<AgentStyle> } | { error: string } {
   const change: Partial<AgentStyle> = {}
   for (const word of words) {
-    const [rawKey, rawValue] = word.split('=')
-    const key = rawKey?.toLowerCase()
-    const value = rawValue?.toLowerCase() ?? ''
-    if (key === 'color' && (COLOR_NAMES as string[]).includes(value)) change.color = value as ColorName
-    else if (key === 'hat' && (HAT_NAMES as string[]).includes(value)) change.hat = value as HatName
-    else if ((key === 'extra' || key === 'accessory') && (ACCESSORY_NAMES as string[]).includes(value))
-      change.accessory = value as AccessoryName
-    else return { error: word }
+    const [rawKey = '', rawValue = ''] = word.split('=')
+    const key = fold(rawKey)
+    if (key === 'color') {
+      const id = idOf('color', rawValue)
+      if (id === undefined) return { error: word }
+      change.color = id as ColorName
+    } else if (key === 'sombrero') {
+      const id = idOf('hat', rawValue)
+      if (id === undefined) return { error: word }
+      change.hat = id as HatName
+    } else if (key === 'extra') {
+      const id = idOf('accessory', rawValue)
+      if (id === undefined) return { error: word }
+      change.accessory = id as AccessoryName
+    } else {
+      return { error: word }
+    }
   }
 
   return { change }
@@ -249,6 +263,12 @@ export function parseStyle(words: readonly string[]): { change: Partial<AgentSty
 export function toolDetail(tool: string, input: Record<string, unknown>): string | null {
   const text = (key: string) => (typeof input[key] === 'string' ? (input[key] as string) : undefined)
   const base = (path: string | undefined) => path?.split(/[\\/]/).filter(Boolean).pop()
+  if (tool === 'Bash') {
+    const command = text('command')
+    const description = text('description')?.trim() || undefined
+    const said = description ?? (command === undefined ? undefined : `Ejecutando ${command}`)
+    return said === undefined ? null : said.replace(/\s+/g, ' ').trim().slice(0, 60)
+  }
   const detail =
     text('description') ??
     text('command') ??
@@ -259,7 +279,7 @@ export function toolDetail(tool: string, input: Record<string, unknown>): string
     hostOf(text('url')) ??
     text('skill') ??
     text('subject')
-  if (detail === undefined || detail.trim() === '') return tool === 'Agent' ? 'delegating' : null
+  if (detail === undefined || detail.trim() === '') return tool === 'Agent' ? 'delegando' : null
 
   return detail.replace(/\s+/g, ' ').trim().slice(0, 60)
 }
@@ -297,32 +317,26 @@ export function labelFor(name: string | undefined, description: string, type: st
   const words = description
     .trim()
     .split(/\s+/)
-    .filter(word => word !== '' && !/^(the|a|an|to|of|for|and|in|on|at|with)$/i.test(word))
+    .filter(word => word !== '' && !/^(the|a|an|to|of|for|and|in|on|at|with|el|la|los|las|un|una|de|del|y|en|con|para|por|al)$/i.test(word))
     .slice(0, 2)
     .join(' ')
 
   return words !== '' ? words : type
 }
 
-const STATUS_WORDS: Record<AgentStatus, string> = {
-  working: 'working',
-  waiting: 'waiting',
-  sleeping: 'sleeping',
-  done: 'done',
-  failed: 'failed',
+/** Qué está haciendo un agente ahora, en español. */
+export function doingOf(agent: FactoryAgent): string {
+  if (agent.status === 'working') return actionText(agent.tool, agent.detail)
+  if (agent.status === 'sleeping' && agent.outcome === 'ok') return 'terminado, dormitando'
+  return STATUS_ES[agent.status]
 }
 
-/** One line on what an agent is doing, for the legend and the hover text. */
+/** Una línea sobre un agente, para el texto al pasar el ratón por su mesa. */
 export function describeAgent(agent: FactoryAgent): string {
-  const role = agent.isMain ? 'manager' : agent.type
-  const doing =
-    agent.status === 'working' && agent.tool !== null
-      ? `${agent.tool}${agent.detail !== null ? `: ${agent.detail}` : ''}`
-      : agent.status === 'working'
-        ? 'thinking'
-        : agent.status === 'sleeping' && agent.outcome === 'ok'
-          ? 'done, dozing'
-          : STATUS_WORDS[agent.status]
+  return `${agent.label} (${agent.isMain ? 'jefe' : agent.type}) · ${doingOf(agent)}`
+}
 
-  return `${agent.label} (${role}) · ${doing}`
+/** La etiqueta de la mesa: «proyecto · nombre», o solo el nombre. */
+export function tagOf(agent: Pick<FactoryAgent, 'label' | 'project'>): string {
+  return agent.project === null ? agent.label : `${agent.project.name} · ${agent.label}`
 }
