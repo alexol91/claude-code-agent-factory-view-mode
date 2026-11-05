@@ -1,14 +1,14 @@
 {
-  "name": "factory-view",
-  "displayName": "Factory View",
-  "version": "0.1.1",
-  "description": "A pixel-art office for Claude Code: watch Claude and its subagents work at their desks, and dress them up.",
+  "name": "oficina",
+  "displayName": "Oficina",
+  "version": "0.2.0",
+  "description": "Una oficina pixel art donde Claude y sus subagentes trabajan en su mesa: avatares por proyecto, bocadillos de acción y el detalle de lo que hace cada uno.",
   "author": {
-    "name": "metetik",
-    "url": "https://github.com/metetik"
+    "name": "Alejandro Oñate",
+    "url": "https://github.com/alexol91"
   },
-  "homepage": "https://github.com/metetik/claude-code-agent-factory-view-mode#readme",
-  "repository": "https://github.com/metetik/claude-code-agent-factory-view-mode",
+  "homepage": "https://github.com/alexol91/claude-code-agent-factory-view-mode#readme",
+  "repository": "https://github.com/alexol91/claude-code-agent-factory-view-mode",
   "license": "MIT",
   "keywords": [
     "subagents",
@@ -25,7 +25,7 @@
     "fun"
   ],
   "icon": "./docs/icon.png",
-  "documentationUrl": "https://github.com/metetik/claude-code-agent-factory-view-mode#readme",
-  "supportUrl": "https://github.com/metetik/claude-code-agent-factory-view-mode/issues",
+  "documentationUrl": "https://github.com/alexol91/claude-code-agent-factory-view-mode#readme",
+  "supportUrl": "https://github.com/alexol91/claude-code-agent-factory-view-mode/issues",
   "types": "./types/index.d.ts"
 }

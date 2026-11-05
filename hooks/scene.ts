@@ -1,4 +1,5 @@
-import type { AccessoryName, AgentStyle, FactoryAgent, HatName } from '../types'
+import type { AccessoryName, AgentSize, AgentStyle, FactoryAgent, HatName } from '../types'
+import { tagOf } from './model'
 import {
   ACCESSORIES,
   BANG,
@@ -14,6 +15,7 @@ import {
   type IconName,
   type Sprite,
 } from './sprites'
+import { drawFloorProps, drawWallProps } from './decor'
 import { MINI_ACCESSORIES, MINI_BANG, MINI_BIG_Z, MINI_CHECK, MINI_HATS, MINI_ICONS, MINI_SMALL_Z } from './minis'
 import { CHIPS, MEDIUM_ACCESSORIES, MEDIUM_HATS, SMALL_ACCESSORIES, SMALL_HATS } from './tinies'
 
@@ -94,7 +96,7 @@ const FLAT_WALL_H = 2
 export type Spacing = 'snug' | 'roomy'
 
 function spacingOf(spacing: Spacing, art: Art): { gapX: number; gapY: number; margin: number; bottom: number } {
-  if (spacing === 'roomy') return { gapX: 10, gapY: 6, margin: 8, bottom: 6 }
+  if (spacing === 'roomy') return { gapX: 10, gapY: 16, margin: 8, bottom: 10 }
   if (DESKS[art].isQuad) return { gapX: 12, gapY: 6, margin: 6, bottom: 2 }
 
   return art === 'large' ? { gapX: 6, gapY: 6, margin: 3, bottom: 2 } : { gapX: 4, gapY: 2, margin: 3, bottom: 2 }
@@ -120,6 +122,9 @@ export type Layout = {
   height: number
 }
 
+/** Qué cambia en el dibujo de escritorio: bocadillos de texto en vez de iconos, y mesas con avatar propio. */
+export type DrawOptions = { textBubbles?: boolean; avatarSeats?: ReadonlySet<number> }
+
 /** How wide `cols` desks across are, in pixels. */
 export function sceneWidth(cols: number, spacing: Spacing = 'snug', art: Art = 'full'): number {
   const { gapX, margin } = spacingOf(spacing, art)
@@ -139,12 +144,17 @@ export function colsFor(columns: number, spacing: Spacing = 'snug', art: Art = '
  * The desks of `seatCount` seats: the manager's in the middle of an odd grid
  * and the others ringed around it, nearest first; on a narrow floor, a column.
  * `isFlat` spends width before height and lowers the wall, for a pane above
- * the prompt.
+ * the prompt; `isWide` spends width before height too, but keeps the wall.
  */
 export function layout(
   seatCount: number,
   maxCols: number,
-  { isFlat = false, spacing = 'snug', art = 'full' }: { isFlat?: boolean; spacing?: Spacing; art?: Art } = {},
+  {
+    isFlat = false,
+    isWide = false,
+    spacing = 'snug',
+    art = 'full',
+  }: { isFlat?: boolean; isWide?: boolean; spacing?: Spacing; art?: Art } = {},
 ): Layout {
   let cols: number
   let rows: number
@@ -164,7 +174,7 @@ export function layout(
     for (let r = 1; r < 64; r += 2) {
       let c = Math.max(3, Math.ceil(seats / r))
       if (c % 2 === 0) c++
-      if (c <= maxCols && (isFlat || c <= r + 2)) {
+      if (c <= maxCols && (isFlat || isWide || c <= r + 2)) {
         cols = c
         rows = r
         break
@@ -210,6 +220,17 @@ export function layout(
     width: sceneWidth(cols, spacing, art),
     height: wall + rows * desk.h + (rows - 1) * gapY + bottom,
   }
+}
+
+/**
+ * En escritorio y móvil la oficina ocupa siempre el ancho del panel, así que el
+ * tamaño decide cuántas mesas caben por fila: pequeño, muchas (agentes pequeños
+ * y oficina baja); grande, tres (agentes grandes).
+ */
+export const REMOTE_LAYOUT: Record<AgentSize, { maxCols: number; isWide: boolean }> = {
+  small: { maxCols: 9, isWide: true },
+  medium: { maxCols: 5, isWide: true },
+  large: { maxCols: 3, isWide: false },
 }
 
 export function stationOrigin(lay: Layout, seat: number): { x: number; y: number } | undefined {
@@ -270,17 +291,7 @@ function drawWall(c: Canvas, wall: number): void {
   c.rect(0, 0, c.width, 1, WALL_DARK)
   c.rect(0, wall - 2, c.width, 2, BASEBOARD)
   if (wall >= DESKS.full.wall) {
-    const windows = Math.max(1, Math.floor((c.width - 8) / 26))
-    const step = c.width / windows
-    for (let i = 0; i < windows; i++) {
-      const x = Math.round(step * i + step / 2) - 5
-      c.rect(x, 2, 10, 5, 0x8892a6)
-      c.rect(x + 1, 3, 8, 3, 0x8ccbea)
-      c.set(x + 2, 3, 0xd8f0ff)
-      c.set(x + 3, 3, 0xd8f0ff)
-      c.set(x + 2, 4, 0xd8f0ff)
-      c.rect(x + 5, 3, 1, 3, 0x8892a6)
-    }
+    drawWallProps(c)
   } else if (wall >= DESKS.large.wall) {
     const windows = Math.max(1, Math.floor((c.width - 6) / 20))
     const step = c.width / windows
@@ -463,8 +474,17 @@ function drawSleep(c: Canvas, x: number, y: number, t: number): void {
 }
 
 /** One desk: chair, agent, desk, monitor and what floats over the agent's head. */
-function drawStation(c: Canvas, x: number, y: number, seat: number, sceneAgent: SceneAgent | undefined, frame: number) {
+function drawStation(
+  c: Canvas,
+  x: number,
+  y: number,
+  seat: number,
+  sceneAgent: SceneAgent | undefined,
+  frame: number,
+  options: DrawOptions = {},
+) {
   const isManager = seat === 0
+  const hasAvatar = options.avatarSeats?.has(seat) === true
   drawChair(c, x, y)
   const agent = sceneAgent?.agent
   const t = agent === undefined ? 0 : (frame + phaseOf(agent.id)) % FRAMES
@@ -494,7 +514,7 @@ function drawStation(c: Canvas, x: number, y: number, seat: number, sceneAgent: 
         arms = t % 2 === 0 ? [-1, 0] : [0, -1]
         break
     }
-    drawCharacter(c, x + 1, y + 8 + dy, sceneAgent.style, look, arms, t)
+    if (!hasAvatar) drawCharacter(c, x + 1, y + 8 + dy, sceneAgent.style, look, arms, t)
   }
 
   drawDesk(c, x, y, isManager)
@@ -510,8 +530,9 @@ function drawStation(c: Canvas, x: number, y: number, seat: number, sceneAgent: 
     return
   }
 
-  if (agent.status === 'working') drawBubble(c, x, y, iconFor(agent.tool), t)
+  if (agent.status === 'working' && options.textBubbles !== true) drawBubble(c, x, y, iconFor(agent.tool), t)
   if (agent.status === 'waiting') drawBubble(c, x, y, 'think', Math.min(2, Math.floor(t / 2)))
+  if (hasAvatar) return // sus iconos de estado van como texto encima del avatar (badgeOf)
   if (agent.status === 'sleeping') drawSleep(c, x, y, t)
   if (agent.outcome === 'ok' && agent.status !== 'working') c.sprite(x + 1, y + 1, CHECK)
   if (agent.outcome === 'failed' && agent.status !== 'working') c.sprite(x + 2, y + 1, BANG)
@@ -905,16 +926,24 @@ function drawHighlight(c: Canvas, x: number, y: number, w: number, h: number, t:
   }
 }
 
-export function drawScene(lay: Layout, agents: readonly SceneAgent[], frame: number, highlightSeat?: number): Canvas {
+export function drawScene(
+  lay: Layout,
+  agents: readonly SceneAgent[],
+  frame: number,
+  highlightSeat?: number,
+  options: DrawOptions = {},
+): Canvas {
   const c = new Canvas(lay.width, lay.height, FLOOR_A)
   drawFloor(c, lay.wall)
   drawWall(c, lay.wall)
+  if (lay.art === 'full' && lay.spacing === 'roomy' && lay.wall >= DESKS.full.wall) drawFloorProps(c, lay.wall)
   const bySeat = seatMap(agents)
   const manager = stationOrigin(lay, 0)
   if (manager !== undefined) drawRug(c, manager.x, manager.y, lay.deskW, lay.deskH)
   const draw =
     lay.art === 'full'
-      ? drawStation
+      ? (c: Canvas, x: number, y: number, seat: number, one: SceneAgent | undefined, f: number) =>
+          drawStation(c, x, y, seat, one, f, options)
       : lay.art === 'large'
         ? drawMiniStation
         : (c: Canvas, x: number, y: number, seat: number, one: SceneAgent | undefined, f: number) =>
@@ -962,7 +991,7 @@ export function sceneLabels(lay: Layout, agents: readonly SceneAgent[], maxChars
   for (const { agent } of agents) {
     const origin = stationOrigin(lay, agent.seat)
     if (origin === undefined) continue
-    const text = clip(agent.label, maxChars)
+    const text = clip(tagOf(agent), maxChars)
     const y = lay.isQuad ? origin.y + COMPACT[lay.art as 'medium' | 'small'].label : origin.y + lay.deskH - 2
     const x = origin.x + perColumn * Math.floor((lay.deskW / perColumn - columns) / 2)
     labels.push({ x, y, width: columns * perColumn, text, color: statusColor(agent.status) })
@@ -985,4 +1014,47 @@ export function sceneHotspots(lay: Layout, agents: readonly SceneAgent[], descri
 export function clip(text: string, max: number): string {
   const chars = Array.from(text)
   return chars.length <= max ? text : `${chars.slice(0, Math.max(1, max - 1)).join('')}…`
+}
+
+/** Medidas del texto de los bocadillos, en píxeles del dibujo. */
+export const BUBBLE_FONT = 2.8
+export const BUBBLE_LINE_H = 3.2
+
+export type BubbleBox = { x: number; y: number; width: number; height: number; tailX: number; tailY: number }
+
+/**
+ * Dónde va el bocadillo de una mesa (solo en el dibujo grande): encima de la
+ * cabeza, sin salirse del dibujo ni tapar la etiqueta de la fila de arriba.
+ */
+export function bubbleBox(lay: Layout, seat: number, lineCount: number): BubbleBox | undefined {
+  const origin = stationOrigin(lay, seat)
+  if (origin === undefined || lay.art !== 'full') return undefined
+  const { gapX } = spacingOf(lay.spacing, lay.art)
+  const width = lay.deskW + gapX - 2
+  const height = lineCount * BUBBLE_LINE_H + 2
+  const headX = origin.x + 7
+  const x = Math.max(1, Math.min(lay.width - width - 1, headX - width / 2))
+  const y = Math.max(0, origin.y + 1 - height)
+
+  return { x, y, width, height, tailX: headX, tailY: origin.y + 4 }
+}
+
+export type Box = { x: number; y: number; width: number; height: number }
+
+/** El hueco del personaje en una mesa del dibujo grande: ahí va el avatar del proyecto. */
+export function avatarBox(lay: Layout, seat: number): Box | undefined {
+  const origin = stationOrigin(lay, seat)
+  if (origin === undefined || lay.art !== 'full') return undefined
+  return { x: origin.x, y: origin.y + 1, width: 14, height: 13 }
+}
+
+export type Badge = { text: string; color: string }
+
+/** El icono de estado de un agente con avatar propio: ✓, ! o z, que se dibuja como texto encima. */
+export function badgeOf(agent: FactoryAgent): Badge | undefined {
+  if (agent.status === 'sleeping') return { text: 'z', color: '#d7e6ff' }
+  if (agent.status === 'working') return undefined
+  if (agent.outcome === 'ok') return { text: '✓', color: '#6cc24a' }
+  if (agent.outcome === 'failed') return { text: '!', color: '#e0484d' }
+  return undefined
 }

@@ -3,3 +3,6 @@
 node_modules/
 .DS_Store
 *.log
+
+# Documentos de trabajo locales (spec, plan, registro de ejecución): no se publican.
+.superpowers/

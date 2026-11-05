@@ -1,24 +1,46 @@
-# Factory View
+# Oficina
 
-> Factory View is a Claude Code mod (a plugin built on Claude Code's function hooks) that visualizes multi-agent orchestration: Claude and its subagents appear as pixel-art mascots working at desks in an office, in a pane beside the conversation. It draws in the terminal with half- and quarter-block characters, and in Claude Code Desktop and the mobile app as an animated SVG.
+> Oficina es un mod de Claude Code (un plugin con hooks) que dibuja una oficina pixel art en un panel junto a la conversación: Claude y sus subagentes trabajan en su mesa, y se ve en qué proyecto está cada uno y qué hace. Se dibuja en la terminal con caracteres de bloque y, en la app de escritorio y el móvil, como SVG animado.
 
-Install it from a Claude Code session with `/plugin install factory-view --marketplace metetik/claude-code-agent-factory-view-mode`, then run `/factory-view demo` to see six pretend agents at work.
+## Instalar
 
-- The main agent sits at the manager's desk in the middle; each subagent, teammate or background agent takes a desk around it.
-- Each agent shows its state: working (a bubble names the kind of tool it runs), waiting, sleeping, done or failed. A legend lists every agent's current tool and what it works on.
-- Agents can be dressed up: 14 colors, 18 hats and 8 extras, for one agent or a whole subagent type; agents nobody dressed get random looks.
-- Three sizes for the terminal: small, medium (default) and large. Everything is controlled from the pane or with `/factory-view`.
-- It runs locally: no network requests, no model calls, no telemetry, nothing added to the prompt.
+En una sesión de Claude Code:
 
-## Docs
+```
+/plugin marketplace add alexol91/claude-code-agent-factory-view-mode
+/plugin install oficina@oficina
+```
 
-- [README](https://github.com/metetik/claude-code-agent-factory-view-mode/blob/main/README.md): install, what each picture means, sizes, dressing up, commands, privacy, FAQ
-- [Plugin manifest](https://github.com/metetik/claude-code-agent-factory-view-mode/blob/main/.claude-plugin/plugin.json): name, version, metadata
-- [Marketplace](https://github.com/metetik/claude-code-agent-factory-view-mode/blob/main/.claude-plugin/marketplace.json): the marketplace this repository serves
+## Comandos
 
-## Source
+| Comando | Hace |
+|---|---|
+| `/oficina` | Abre o cierra el panel |
+| `/oficina vestir <quién> color=… sombrero=… extra=…` | Viste al jefe (`jefe`), a un tipo o a un agente por su etiqueta |
+| `/oficina restablecer [quién]` | Vuelve al aspecto por defecto |
+| `/oficina aspecto azar\|tipo` | Cómo visten los que nadie vistió |
+| `/oficina tamaño pequeño\|mediano\|grande` | En escritorio, cuántas mesas caben por fila (pequeño: muchas; grande: tres y agentes más grandes); en la terminal, el tamaño del dibujo |
+| `/oficina despejar` | Manda a casa a los que terminaron |
+| `/oficina demo` | Añade o quita seis agentes de prueba |
+| `/oficina opciones` | Lista colores, sombreros y extras |
+| `/oficina recargar` | Vuelve a leer las carpetas `.claude/avatars` |
 
-- [hooks/register.tsx](https://github.com/metetik/claude-code-agent-factory-view-mode/blob/main/hooks/register.tsx): the hooks module: session events, the pane, the `/factory-view` command, the animation
-- [hooks/model.ts](https://github.com/metetik/claude-code-agent-factory-view-mode/blob/main/hooks/model.ts): agents, desks, status changes and styles
-- [hooks/scene.ts](https://github.com/metetik/claude-code-agent-factory-view-mode/blob/main/hooks/scene.ts): the floor plan and the pixel painter
-- [tests/factory.test.ts](https://github.com/metetik/claude-code-agent-factory-view-mode/blob/main/tests/factory.test.ts): tests run with `claude plugin test .`
+## Avatares por proyecto
+
+Cada repo puede traer sus sprites en `<repo>/.claude/avatars/`: `avatar.png` (uno solo) o `avatar-1.png` … `avatar-12.png` (fotogramas de una animación), y un `avatar.json` opcional con `nombre` y `fps`. Cada PNG: fondo transparente, como mucho 128×128 px y 20 KB; 60 KB por repo; todos los fotogramas del mismo tamaño. Tras cambiarlos, `/oficina recargar`.
+
+## Código
+
+- [README.md](README.md): guía completa en español.
+- [hooks/register.tsx](hooks/register.tsx): registro de hooks, comando y panel.
+- [hooks/model.ts](hooks/model.ts): agentes, estilos y detalle de herramientas.
+- [hooks/activity.ts](hooks/activity.ts): historial de llamadas y bocadillos.
+- [hooks/avatars.ts](hooks/avatars.ts): lectura y validación de los PNG de cada proyecto.
+- [hooks/project.ts](hooks/project.ts): a qué proyecto pertenece cada agente.
+- [hooks/scene.ts](hooks/scene.ts): distribución de la oficina.
+- [hooks/paint.ts](hooks/paint.ts): dibujo en terminal y SVG.
+- [hooks/texts.ts](hooks/texts.ts): textos de la interfaz.
+
+## Créditos
+
+Basado en Factory View de metetik (MIT).

@@ -1,7 +1,34 @@
 /** What an agent at a desk is doing right now. */
 export type AgentStatus = 'working' | 'waiting' | 'sleeping' | 'done' | 'failed'
 
+/** Qué tipo de trabajo es una llamada a herramienta: su icono y con quién se agrupa. */
+export type CallFamily = 'bash' | 'edit' | 'read' | 'search' | 'web' | 'agent' | 'mcp' | 'other'
+
+export type CallStatus = 'running' | 'done' | 'failed'
+
+/** Una llamada a herramienta de un agente, para el detalle de actividad. */
+export type Call = {
+  /** El `tool_use_id` de la llamada. */
+  id: string
+  tool: string
+  family: CallFamily
+  /** Fichero, comando, patrón… lo mismo que alimenta el bocadillo. */
+  label: string
+  status: CallStatus
+  start: number
+  end?: number
+}
+
 /** One agent on the factory floor: the main loop (`id: 'main'`) or a subagent. */
+/** El proyecto (repo) donde trabaja un agente, según lo último que tocó. */
+export type AgentProject = {
+  root: string
+  /** El `nombre` de avatar.json, o el nombre de la carpeta. */
+  name: string
+  /** Si el repo tiene carpeta `.claude/avatars`. */
+  hasAvatars: boolean
+}
+
 export type FactoryAgent = {
   id: string
   isMain: boolean
@@ -11,6 +38,7 @@ export type FactoryAgent = {
   label: string
   /** The task the agent was given, as the Agent call described it. */
   description: string
+  project: AgentProject | null
   status: AgentStatus
   /** How its last task ended, kept after it dozes off: a badge over its head. */
   outcome: 'ok' | 'failed' | null
@@ -22,12 +50,14 @@ export type FactoryAgent = {
   toolId: string | null
   /** Epoch milliseconds of the last status change. */
   since: number
+  /** Cuándo llegó a la oficina, en milisegundos. */
+  startedAt: number
   /** The desk: 0 is the manager's, the rest ring around it. */
   seat: number
   toolCount: number
   /** A named member of the session's team: it waits for messages between turns. */
   isTeammate: boolean
-  /** One of `/factory-view demo`'s pretend agents. */
+  /** One of `/oficina demo`'s pretend agents. */
   isDemo: boolean
 }
 
@@ -90,7 +120,9 @@ export type AgentSize = 'small' | 'medium' | 'large'
 
 declare module 'claude-code' {
   interface PluginState {
-    'factory-view': {
+    oficina: {
+      /** Sube con `/oficina recargar`, para redibujar con los avatares leídos de nuevo. */
+      refresh: number
       agents: FactoryAgent[]
       /** Keyed by `main`, `type:<subagent type>` or `agent:<agent id>`. */
       styles: Record<string, AgentStyle>
@@ -101,6 +133,10 @@ declare module 'claude-code' {
       /** Whether the pane's style controls dress the picked agent alone or its whole type. */
       scope: 'agent' | 'type'
       isDemo: boolean
+      /** El historial de llamadas de cada agente, por su id. */
+      calls: Record<string, Call[]>
+      /** La pestaña abierta del agente elegido. */
+      tab: 'actividad' | 'vestir'
     }
   }
 }
